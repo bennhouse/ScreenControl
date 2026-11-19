@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var outsideClickMonitor: Any?
     /// The display whose menu bar the panel was opened from.
     private var anchorDisplay: CGDirectDisplayID?
+    /// That display's size and scale when last seen, to tell a resolution change on it from
+    /// changes on other displays.
+    private var anchorMode: (size: NSSize, scale: CGFloat)?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -50,11 +53,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             guard let self, self.panel.isVisible else { return }
-            // A resolution change blanks every window for a moment. Hide the panel, put it back
-            // under its icon once the status item windows are rebuilt, then fade it in instead
-            // of letting it pop back.
-            self.panel.alphaValue = 0
+            let mode = self.anchorScreen().map { (size: $0.frame.size, scale: $0.backingScaleFactor) }
+            let resized = mode.map { $0.size != self.anchorMode?.size || $0.scale != self.anchorMode?.scale } ?? false
+            self.anchorMode = mode ?? self.anchorMode
             self.followAnchor(animated: false)
+            guard resized else {
+                // Another display changed: just stay in place (the status item windows are
+                // rebuilt a moment later).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.followAnchor(animated: false) }
+                return
+            }
+            // The panel's own screen changed resolution, which blanks every window for a
+            // moment. Hide the panel, put it back under its icon once the status item windows
+            // are rebuilt, then fade it in instead of letting it pop back.
+            self.panel.alphaValue = 0
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 self.followAnchor(animated: false)
                 guard self.panel.isVisible else { return }
@@ -116,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         displays.setPanelVisible(true)
         keyboard.setPanelVisible(true)
         anchorDisplay = Self.displayID(of: statusWindow)
+        anchorMode = statusWindow.screen.map { (size: $0.frame.size, scale: $0.backingScaleFactor) }
         panel.show(below: statusWindow)
         button.highlight(true)
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
@@ -133,6 +146,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         panel.place(below: window, animated: animated)
+    }
+
+    private func anchorScreen() -> NSScreen? {
+        NSScreen.screens.first {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == anchorDisplay
+        }
     }
 
     private static func displayID(of window: NSWindow) -> CGDirectDisplayID? {

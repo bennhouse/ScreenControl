@@ -77,7 +77,11 @@ final class PanelWindow: NSPanel {
     func place(below statusWindow: NSWindow, animated: Bool) {
         let target = frame(below: statusWindow)
         guard target != frame else { return }
-        if animated {
+        // Only a change of height is animated (the panel growing or shrinking under its icon).
+        // A move means the screen coordinates changed (another display came or went): the
+        // panel is already in the right place on screen, so it just follows, without sliding.
+        let sameAnchor = abs(target.minX - frame.minX) < 1 && abs(target.maxY - frame.maxY) < 1
+        if animated && sameAnchor {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = Self.resizeDuration
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
