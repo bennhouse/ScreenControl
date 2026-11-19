@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// That display's size and scale when last seen, to tell a resolution change on it from
     /// changes on other displays.
     private var anchorMode: (size: NSSize, scale: CGFloat)?
+    /// Pending move of the panel to another screen (its own display was turned off).
+    private var relocateWork: DispatchWorkItem?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -53,6 +55,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             guard let self, self.panel.isVisible else { return }
+            // Moving to another screen: every change restarts the wait for things to settle.
+            if self.relocateWork != nil {
+                self.relocatePanel()
+                return
+            }
             let mode = self.anchorScreen().map { (size: $0.frame.size, scale: $0.backingScaleFactor) }
             let resized = mode.map { $0.size != self.anchorMode?.size || $0.scale != self.anchorMode?.scale } ?? false
             self.anchorMode = mode ?? self.anchorMode
@@ -140,12 +147,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// has gone (its display was turned off).
     private func followAnchor(animated: Bool) {
         guard panel.isVisible else { return }
-        let statusWindows = NSApp.windows.filter { $0.className.contains("StatusBar") && $0.isVisible }
-        guard let window = statusWindows.first(where: { Self.displayID(of: $0) == anchorDisplay }) else {
+        guard let window = statusWindows().first(where: { Self.displayID(of: $0) == anchorDisplay }) else {
+            relocatePanel()
+            return
+        }
+        guard relocateWork == nil else { return } // moving to another screen: wait for it
+        panel.place(below: window, animated: animated)
+    }
+
+    private func statusWindows() -> [NSWindow] {
+        NSApp.windows.filter { $0.className.contains("StatusBar") && $0.isVisible }
+    }
+
+    /// The panel's display was turned off. Hide the panel, wait until the displays have
+    /// settled (resolution changes, menu bars rebuilt; every new change restarts the wait),
+    /// then fade it in under the status item of the main display.
+    private func relocatePanel() {
+        panel.alphaValue = 0
+        relocateWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.finishRelocation() }
+        relocateWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
+    }
+
+    private func finishRelocation() {
+        relocateWork = nil
+        guard panel.isVisible else { return }
+        let windows = statusWindows()
+        guard let window = windows.first(where: { $0.screen == NSScreen.screens.first }) ?? windows.first else {
             closePanel()
             return
         }
-        panel.place(below: window, animated: animated)
+        anchorDisplay = Self.displayID(of: window)
+        anchorMode = window.screen.map { (size: $0.frame.size, scale: $0.backingScaleFactor) }
+        panel.place(below: window, animated: false)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+        }
     }
 
     private func anchorScreen() -> NSScreen? {
@@ -160,7 +200,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func closePanel() {
         guard panel.isVisible else { return }
+        relocateWork?.cancel()
+        relocateWork = nil
         panel.orderOut(nil)
+        panel.alphaValue = 1
         statusItem.button?.highlight(false)
         displays.setPanelVisible(false)
         keyboard.setPanelVisible(false)

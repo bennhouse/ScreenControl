@@ -34,11 +34,12 @@ struct CCSlider: View {
                 // The system draws its thin grey outline over the white fill too.
                 Capsule().strokeBorder(rimColor, lineWidth: 1)
                 if enabled {
+                    // 1 pt smaller all round than the track, so it sits inside the thin outline.
                     Circle()
                         .fill(Color.white)
-                        .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.28), radius: 1.2, x: 0, y: 0.3)
-                        .frame(width: height, height: height)
-                        .offset(x: knobCenter - height / 2)
+                        .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.25), radius: 0.8, x: 0, y: 0.3)
+                        .frame(width: height - 2, height: height - 2)
+                        .offset(x: knobCenter - height / 2 + 1)
                 }
                 glyphView
                     .frame(width: height, height: height)
