@@ -80,7 +80,17 @@ To keep only one Display icon, hide the system one: **System Settings → Contro
 
 ## Installation
 
-ScreenControl is built from source. You need the Xcode command line tools (`xcode-select --install`), but not Xcode itself.
+### Download
+
+1. Download `ScreenControl-1.1.dmg` from [Releases](../../releases) and drag ScreenControl to Applications.
+2. ScreenControl is not notarized, so macOS blocks it the first time. Open System Settings › Privacy & Security, scroll down and click **Open Anyway**. You can also clear the quarantine flag from Terminal:
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/ScreenControl.app
+   ```
+
+### Build from source
+
+You need the Xcode command line tools (`xcode-select --install`), but not Xcode itself.
 
 ```sh
 git clone https://github.com/bennhouse/ScreenControl.git
@@ -94,6 +104,7 @@ Options:
 
 - `NO_INSTALL=1 scripts/build-app.sh` only builds `build/ScreenControl.app`.
 - `UNIVERSAL=1 scripts/build-app.sh` builds for Apple silicon and Intel.
+- `scripts/make-dmg.sh` builds the universal installer, `build/ScreenControl-<version>.dmg`, without installing anything.
 
 ## How it works
 
@@ -134,6 +145,7 @@ Sources/ScreenControl/
   UI/                        panel view, controls, glyphs, material, window
 scripts/
   build-app.sh               build, sign, install
+  make-dmg.sh                universal installer (DMG)
   make-icon.swift            draws the app icon
 ```
 
