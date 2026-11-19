@@ -116,21 +116,25 @@ func draw(_ px: Int) -> Data {
     let foot = CGPath(roundedRect: CGRect(x: P(5.2, 3.0).x, y: P(5.2, 3.0).y, width: 5.6 * u, height: 0.85 * u),
                       cornerWidth: 0.42 * u, cornerHeight: 0.42 * u, transform: nil)
 
-    let center = P(8, 9.1)
+    // One piece: frame, neck and foot joined into a single shape, with one shadow and one rim.
+    let monitor = frame.union(neck).union(foot)
+
+    // The sun sits well inside the screen, with a clear margin to the frame on every side.
+    let center = CGPoint(x: frameRect.midX, y: frameRect.midY)
     let sun = CGMutablePath()
-    sun.addEllipse(in: CGRect(x: center.x - 1.45 * u, y: center.y - 1.45 * u, width: 2.9 * u, height: 2.9 * u))
+    sun.addEllipse(in: CGRect(x: center.x - 1.15 * u, y: center.y - 1.15 * u, width: 2.3 * u, height: 2.3 * u))
     let rays = CGMutablePath()
     for k in 0..<8 {
         let a = CGFloat(k) * .pi / 4
-        rays.move(to: CGPoint(x: center.x + cos(a) * 2.25 * u, y: center.y + sin(a) * 2.25 * u))
-        rays.addLine(to: CGPoint(x: center.x + cos(a) * 3.0 * u, y: center.y + sin(a) * 3.0 * u))
+        rays.move(to: CGPoint(x: center.x + cos(a) * 1.78 * u, y: center.y + sin(a) * 1.78 * u))
+        rays.addLine(to: CGPoint(x: center.x + cos(a) * 2.32 * u, y: center.y + sin(a) * 2.32 * u))
     }
-    sun.addPath(rays.copy(strokingWithWidth: 0.62 * u, lineCap: .round, lineJoin: .round, miterLimit: 10))
+    sun.addPath(rays.copy(strokingWithWidth: 0.52 * u, lineCap: .round, lineJoin: .round, miterLimit: 10))
 
     let gray = (c(206, 204, 200), c(176, 174, 171))
     let white = (c(250, 249, 247), c(222, 219, 216))
     let dim = (c(128, 130, 137), c(104, 106, 112))
-    for part in [foot, neck, frame] { material(part, top: gray.0, bottom: gray.1, shadowAlpha: 0.38) }
+    material(monitor, top: gray.0, bottom: gray.1, shadowAlpha: 0.38)
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: 0, width: center.x, height: s))
     material(sun, top: white.0, bottom: white.1, shadowAlpha: 0.45)
