@@ -146,6 +146,7 @@ Sources/ScreenControl/
 scripts/
   build-app.sh               build, sign, install
   make-dmg.sh                universal installer (DMG)
+  make-dmg-background.swift  draws the installer window's background
   make-icon.swift            draws the app icon
 ```
 
