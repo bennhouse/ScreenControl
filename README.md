@@ -82,7 +82,7 @@ To keep only one Display icon, hide the system one: **System Settings → Contro
 
 ### Download
 
-1. Download `ScreenControl-1.1.dmg` from [Releases](../../releases) and drag ScreenControl to Applications.
+1. Download `ScreenControl-1.2.dmg` from [Releases](../../releases) and drag ScreenControl to Applications.
 2. ScreenControl is not notarized, so macOS blocks it the first time. Open System Settings › Privacy & Security, scroll down and click **Open Anyway**. You can also clear the quarantine flag from Terminal:
    ```sh
    xattr -dr com.apple.quarantine /Applications/ScreenControl.app

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2
+
+- The panel opens a little below the menu bar, like Control Center's panels.
+- The status lines under Dark Mode, Night Shift and True Tone go on two lines, as in Control Center ("On until / tomorrow").
+
 ## 1.1
 
 - The panel moves to the other screen when its own display is turned off, once the displays have settled.

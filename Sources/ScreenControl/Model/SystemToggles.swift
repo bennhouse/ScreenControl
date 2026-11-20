@@ -19,8 +19,9 @@ final class SystemToggles: ObservableObject {
         trueToneClient = live ? TrueToneClient() : nil
     }
 
+    /// Status lines break after "until", on two lines like Control Center's.
     var darkModeSubtitle: String {
-        if darkModeAutomatic { return darkMode ? "On until tomorrow" : "Off until later" }
+        if darkModeAutomatic { return darkMode ? "On until\ntomorrow" : "Off until\nlater" }
         return darkMode ? "On" : "Off"
     }
 
@@ -57,10 +58,10 @@ final class SystemToggles: ObservableObject {
     private static func nightShiftSubtitle(_ status: NightShiftClient.Status) -> String {
         switch status.mode {
         case 1:
-            return status.enabled ? "On until sunrise" : "Off until sunset"
+            return status.enabled ? "On until\nsunrise" : "Off until\nsunset"
         case 2:
             let time = status.enabled ? status.to : status.from
-            return (status.enabled ? "On until " : "Off until ") + timeString(hour: Int(time.hour), minute: Int(time.minute))
+            return (status.enabled ? "On until\n" : "Off until\n") + timeString(hour: Int(time.hour), minute: Int(time.minute))
         default:
             return status.enabled ? "On" : "Off"
         }

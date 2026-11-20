@@ -28,9 +28,9 @@ enum Snapshot {
         if reference {
             strings.darkMode = "Modalità scura"
             strings.displaySettings = "Impostazioni Schermi…"
-            toggles.nightShiftSubtitle = "Non attivo fino al tramonto"
+            toggles.nightShiftSubtitle = "Non attivo fino\nal tramonto"
         } else {
-            toggles.nightShiftSubtitle = "Off until sunset"
+            toggles.nightShiftSubtitle = "Off until\nsunset"
         }
 
         let keyboard = KeyboardBacklight(live: false)

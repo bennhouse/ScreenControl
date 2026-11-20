@@ -7,6 +7,8 @@ final class PanelWindow: NSPanel {
     static let cornerRadius: CGFloat = 6
     /// Shared with the SwiftUI layout animation so the window and its content move together.
     static let resizeDuration: TimeInterval = 0.3
+    /// Space between the bottom of the menu bar and the top of the panel.
+    static let menuBarGap: CGFloat = 5
 
     var onClose: (() -> Void)?
     private let hosting: NSHostingView<AnyView>
@@ -96,8 +98,9 @@ final class PanelWindow: NSPanel {
         let anchor = statusWindow.frame
         let screen = statusWindow.screen ?? NSScreen.main
         let size = NSSize(width: PanelView.width, height: fittingHeight)
-        // 1 pt below the menu bar (the status item window spans the bar's full height).
-        var origin = NSPoint(x: anchor.minX, y: anchor.minY - 1 - size.height)
+        // A small gap under the menu bar, as Control Center's panels have (the status item
+        // window spans the bar's full height).
+        var origin = NSPoint(x: anchor.minX, y: anchor.minY - Self.menuBarGap - size.height)
         if let visible = screen?.visibleFrame {
             origin.x = min(max(origin.x, visible.minX + 6), visible.maxX - size.width - 6)
         }
