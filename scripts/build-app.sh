@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Builds ScreenControl with SwiftPM, assembles build/ScreenControl.app, signs it ad hoc and
-# installs it in ~/Applications.
+# installs it in /Applications.
 #   scripts/build-app.sh               build, sign, install, relaunch
 #   NO_INSTALL=1 scripts/build-app.sh  only build/ScreenControl.app
 #   UNIVERSAL=1 ...                    Apple Silicon + Intel binary
@@ -34,11 +34,10 @@ codesign --force --sign - --identifier "local.screencontrol.ScreenControl" "$APP
 if [[ "${NO_INSTALL:-0}" != "1" ]]; then
     osascript -e 'tell application id "local.screencontrol.ScreenControl" to quit' 2>/dev/null || true
     sleep 0.5
-    mkdir -p "$HOME/Applications"
-    rm -rf "$HOME/Applications/ScreenControl.app"
-    ditto "$APP" "$HOME/Applications/ScreenControl.app"
-    open "$HOME/Applications/ScreenControl.app"
-    echo "Installed and launched $HOME/Applications/ScreenControl.app"
+    rm -rf "/Applications/ScreenControl.app"
+    ditto "$APP" "/Applications/ScreenControl.app"
+    open "/Applications/ScreenControl.app"
+    echo "Installed and launched /Applications/ScreenControl.app"
 else
     echo "Built $PWD/$APP"
 fi

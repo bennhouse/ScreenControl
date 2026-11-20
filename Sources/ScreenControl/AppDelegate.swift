@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let displays = DisplayController()
     private let toggles = SystemToggles()
     private let keyboard = KeyboardBacklight()
+    private let keepAwake = KeepAwake()
     private var hotKey: HotKey?
     private var outsideClickMonitor: Any?
     /// The display whose menu bar the panel was opened from.
@@ -24,10 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "display", accessibilityDescription: "Displays")?
-                .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
-            image?.isTemplate = true
-            button.image = image
+            button.image = StatusIcon.image(keepAwake: false)
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
@@ -90,6 +88,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.displays.disableAllDimming()
         }
 
+        // Keep Awake: the coffee cup on the icon while it is on, and its shortcut (⇧⌘L by default).
+        keepAwake.registerShortcut()
+        keepAwake.$isActive
+            .removeDuplicates()
+            .sink { [weak self] active in self?.statusItem.button?.image = StatusIcon.image(keepAwake: active) }
+            .store(in: &cancellables)
+        SettingsWindow.shared.keepAwake = keepAwake
+        NSApp.mainMenu = makeMainMenu()
+
         if ProcessInfo.processInfo.environment["SCREENCONTROL_OPEN_PANEL"] == "1" {
             // Development aid: open the panel at launch (for screenshots). Login item untouched.
             if ProcessInfo.processInfo.environment["SCREENCONTROL_APPEARANCE"] == "dark" {
@@ -111,6 +118,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         displays.stop()
+        keepAwake.stop()
+    }
+
+    /// A menu bar app shows no menu bar, but its main menu still handles the standard key
+    /// equivalents (⌘W, ⌘Q, editing) while the Settings window is in front.
+    private func makeMainMenu() -> NSMenu {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu(title: "ScreenControl")
+        appMenu.addItem(NSMenuItem(title: "Quit ScreenControl", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+        let windowItem = NSMenuItem()
+        let window = NSMenu(title: "Window")
+        window.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        windowItem.submenu = window
+        main.addItem(windowItem)
+        return main
     }
 
     // MARK: Status item
@@ -119,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let event = NSApp.currentEvent
         if event?.type == .rightMouseDown || event?.modifierFlags.contains(.control) == true {
             closePanel()
-            showContextMenu()
+            showContextMenu(trigger: event)
         } else if panel.isVisible {
             closePanel()
         } else {
@@ -215,13 +240,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showContextMenu() {
+    private func showContextMenu(trigger: NSEvent?) {
         guard let button = statusItem.button else { return }
         let menu = NSMenu()
-        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        login.target = self
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(login)
+
+        // Keep Awake, laid out like Vorssaint's menu: a switch, then a submenu of durations.
+        let toggle = NSMenuItem(title: keepAwake.isActive ? "Turn Off Keep Awake" : "Turn On Keep Awake",
+                                action: #selector(toggleKeepAwake), keyEquivalent: "")
+        toggle.target = self
+        if keepAwake.shortcutActive {
+            toggle.keyEquivalent = keepAwake.shortcut.menuKeyEquivalent
+            toggle.keyEquivalentModifierMask = keepAwake.shortcut.flags
+        }
+        menu.addItem(toggle)
+        let forItem = NSMenuItem(title: "Turn On For…", action: nil, keyEquivalent: "")
+        let durations = NSMenu()
+        for (index, duration) in KeepAwake.durations.enumerated() {
+            let item = NSMenuItem(title: duration.title, action: #selector(keepAwakeFor(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            durations.addItem(item)
+        }
+        forItem.submenu = durations
+        menu.addItem(forItem)
+        if keepAwake.isActive {
+            let status: String
+            if let end = keepAwake.endDate {
+                let time = end.formatted(date: Calendar.current.isDateInToday(end) ? .omitted : .abbreviated, time: .shortened)
+                status = "Keeping awake until \(time)"
+            } else {
+                status = "Keeping awake until turned off"
+            }
+            let info = NSMenuItem(title: status, action: nil, keyEquivalent: "")
+            info.isEnabled = false
+            menu.addItem(info)
+        }
+        menu.addItem(.separator())
 
         let restore = NSMenuItem(title: "Turn Off Reduce Brightness", action: #selector(turnOffDimming), keyEquivalent: "b")
         restore.keyEquivalentModifierMask = [.control, .option, .command]
@@ -230,9 +284,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(restore)
 
         menu.addItem(.separator())
+        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        login.target = self
+        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(login)
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
+        menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit ScreenControl", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 5), in: button)
+        // The menu opened on mouse down and took the mouse up, while the status button is still
+        // tracking that click: hand it the mouse up, so it stops tracking and the app goes back to
+        // its normal event loop. Otherwise global shortcuts wait for the next click.
+        if let trigger, let window = button.window,
+           let up = NSEvent.mouseEvent(with: trigger.type == .rightMouseDown ? .rightMouseUp : .leftMouseUp,
+                                       location: trigger.locationInWindow, modifierFlags: trigger.modifierFlags,
+                                       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                       context: nil, eventNumber: 0, clickCount: 1, pressure: 0) {
+            NSApp.postEvent(up, atStart: true)
+        }
+    }
+
+    @objc private func toggleKeepAwake() {
+        keepAwake.toggle()
+    }
+
+    @objc private func keepAwakeFor(_ sender: NSMenuItem) {
+        keepAwake.start(minutes: KeepAwake.durations[sender.tag].minutes)
+    }
+
+    @objc private func openSettings() {
+        SettingsWindow.shared.show()
     }
 
     @objc private func turnOffDimming() {

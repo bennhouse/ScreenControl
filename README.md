@@ -21,6 +21,7 @@ ScreenControl lives in the menu bar and replaces the system Display menu. It is 
 - **Reduce brightness**: dim a monitor below its lowest hardware setting.
 - **Turn a display off and on** without unplugging it. The desktop shrinks to the displays that are still on.
 - **Keyboard backlight** slider.
+- **Keep Awake**: stop the Mac and its screen from sleeping, for a while or until you turn it off.
 
 It is a small native app (Swift, AppKit and SwiftUI). It needs no privacy permissions and makes no network connections.
 
@@ -66,6 +67,15 @@ The power button next to each display's name turns the display off in software.
 - **Persistent:** a display stays off after you quit ScreenControl, and shows as Off when the app opens again.
 - **Restored by macOS:** logging out or restarting turns every display back on. If the only display that is on is unplugged, ScreenControl turns the others back on.
 
+### Keep Awake
+
+Stops the Mac and its display from going to sleep while you're not using it, like `caffeinate -d`.
+
+- **Turn on:** right-click the menu bar icon and choose **Turn On Keep Awake** (until you turn it off), or **Turn On For…** › 15 minutes, 30 minutes, 1, 2, 4 or 8 hours, or Indefinitely.
+- **Shortcut:** <kbd>⇧</kbd><kbd>⌘</kbd><kbd>L</kbd> turns it on (until turned off) and off, from anywhere. Change it in **Settings…** in the same menu. ScreenControl registers it exclusively: while it runs, ⇧⌘L always goes to Keep Awake, ahead of ⇧⌘L in any app and of other apps' global shortcuts on the same keys, which stop working.
+- **At a glance:** while it is on, a small coffee cup appears on the display in the menu bar icon, and the menu shows until when.
+- It ends at the chosen time, when you turn it off, or when ScreenControl quits. Closing the lid of a MacBook still puts it to sleep.
+
 ### Control Center toggles
 
 - **Dark Mode, Night Shift and True Tone**, with the same round buttons and status lines as Control Center ("Off until sunset", "On until tomorrow"…).
@@ -76,7 +86,7 @@ The power button next to each display's name turns the display off in software.
 ### Menu bar
 
 - Click the icon to open the panel. Press <kbd>Esc</kbd> or click outside it to close it.
-- Right-click the icon for **Launch at Login** (on by default), **Turn Off Reduce Brightness** and **Quit**.
+- Right-click the icon for **Keep Awake**, **Turn Off Reduce Brightness**, **Launch at Login** (on by default), **Settings…** (the Keep Awake shortcut) and **Quit**.
 
 To keep only one Display icon, hide the system one: **System Settings → Control Center → Displays → Don't Show in Menu Bar**.
 
@@ -91,7 +101,7 @@ To keep only one Display icon, hide the system one: **System Settings → Contro
 
 ### Download
 
-1. Download `ScreenControl-1.3.dmg` from [Releases](../../releases) and drag ScreenControl to Applications.
+1. Download `ScreenControl-1.4.dmg` from [Releases](../../releases) and drag ScreenControl to Applications.
 2. ScreenControl is not notarized, so macOS blocks it the first time. Open System Settings › Privacy & Security, scroll down and click **Open Anyway**. You can also clear the quarantine flag from Terminal:
    ```sh
    xattr -dr com.apple.quarantine /Applications/ScreenControl.app
@@ -107,7 +117,7 @@ cd ScreenControl
 scripts/build-app.sh
 ```
 
-The script builds a release binary with SwiftPM, assembles `ScreenControl.app`, signs it ad hoc, installs it in `~/Applications` and launches it.
+The script builds a release binary with SwiftPM, assembles `ScreenControl.app`, signs it ad hoc, installs it in `/Applications` (replacing the copy there) and launches it.
 
 Options:
 
@@ -125,6 +135,7 @@ Options:
 | Display power | `SLSConfigureDisplayEnabled` in a session-scoped display configuration. |
 | Night Shift, True Tone, keyboard backlight | CoreBrightness clients, the ones Control Center uses. |
 | Dark Mode | SkyLight's appearance call, plus the system's global preference transition (the cross-fade). |
+| Keep Awake | An IOKit power assertion, `PreventUserIdleDisplaySleep`, held while it is on. |
 | Panel material | Rebuilt layer for layer from the window macOS gives `MenuBarExtra` apps: a blurred, saturated backdrop under a grey blend layer. It is calibrated against the Control Center Display menu. |
 
 ### Keeping the gamma table in place
@@ -149,9 +160,9 @@ macOS resets every display's gamma table in a few situations: when a display is 
 ```
 Sources/ScreenControl/
   AppDelegate.swift          status item, panel, context menu, login item
-  Model/                     displays, keyboard backlight, Control Center toggles
-  System/                    DDC, gamma dimming, private APIs, hot key
-  UI/                        panel view, controls, glyphs, material, window
+  Model/                     displays, keyboard backlight, Control Center toggles, Keep Awake
+  System/                    DDC, gamma dimming, private APIs, hot keys, shortcuts
+  UI/                        panel view, controls, glyphs, material, window, menu bar icon, Settings
 scripts/
   build-app.sh               build, sign, install
   make-dmg.sh                universal installer (DMG)
@@ -168,6 +179,7 @@ The binary has a few modes for checking the hardware paths from the terminal:
 | `ScreenControl --selftest-power` | Turns the built-in display off and on. It checks its brightness and gamma afterwards, and watches a dimmed external monitor for flashes. |
 | `ScreenControl --selftest-black` | Moves the built-in slider to its bottom (1%, never 0), then turns Black screen on (true 0) and off. The built-in screen goes black for a second. |
 | `ScreenControl --selftest-persist` | Turns the built-in display off, simulates quitting and reopening the app, then turns the display back on. |
+| `ScreenControl --selftest-keepawake [dir]` | Turns Keep Awake on, off and for one second, checking the power assertion each time, and changes its shortcut and back. With a folder, also writes the menu bar icon and the Settings view there. |
 | `ScreenControl --snapshot out.png [--dark]` | Renders the panel to an image. |
 
 ## Acknowledgements

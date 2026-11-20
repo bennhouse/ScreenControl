@@ -2,19 +2,33 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleDevelopmentRegion</key><string>en</string>
-	<key>CFBundleExecutable</key><string>ScreenControl</string>
-	<key>CFBundleIdentifier</key><string>local.screencontrol.ScreenControl</string>
-	<key>CFBundleName</key><string>ScreenControl</string>
-	<key>CFBundleDisplayName</key><string>ScreenControl</string>
-	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>1.3</string>
-	<key>CFBundleVersion</key><string>4</string>
-	<key>CFBundleIconFile</key><string>AppIcon</string>
-	<key>LSMinimumSystemVersion</key><string>15.0</string>
-	<key>LSUIElement</key><true/>
-	<key>NSHighResolutionCapable</key><true/>
-	<key>NSPrincipalClass</key><string>NSApplication</string>
-	<key>NSAppleEventsUsageDescription</key><string>ScreenControl switches Dark Mode through System Events only if the direct system call is unavailable.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>ScreenControl</string>
+	<key>CFBundleExecutable</key>
+	<string>ScreenControl</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.screencontrol.ScreenControl</string>
+	<key>CFBundleName</key>
+	<string>ScreenControl</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.4</string>
+	<key>CFBundleVersion</key>
+	<string>5</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>ScreenControl switches Dark Mode through System Events only if the direct system call is unavailable.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>

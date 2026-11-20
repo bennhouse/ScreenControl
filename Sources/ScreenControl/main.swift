@@ -26,6 +26,9 @@ if CommandLine.arguments.contains("--selftest-writes") {
     SelfTest.runWrites()
     exit(0)
 }
+if CommandLine.arguments.contains("--selftest-keepawake") {
+    exit(KeepAwakeSelfTest.run() ? 0 : 1)
+}
 if CommandLine.arguments.contains("--selftest") {
     SelfTest.run()
     exit(0)

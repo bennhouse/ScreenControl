@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4
+
+- New icon: the suite's colour icons, ScreenControl in orange.
+- **Keep Awake**: stops the Mac and its display from sleeping. Right-click the menu bar icon for **Turn On Keep Awake**, or **Turn On For…** 15 minutes to 8 hours or indefinitely. ⇧⌘L turns it on and off from anywhere.
+- While Keep Awake is on, the menu bar icon shows a small coffee cup on its screen, and the menu shows until when.
+- **Settings…** in the right-click menu: change the Keep Awake shortcut. Shortcuts are registered exclusively, so other apps using the same keys don't get them.
+- After the right-click menu closed, the menu bar button kept waiting for the click to end, so shortcuts (⌃⌥⌘B too) and Quit did nothing until the next click. Fixed.
+
 ## 1.3
 
 - The Night Shift button turns orange when on, as in Control Center, whatever the accent colour.

@@ -58,10 +58,10 @@ func draw(_ px: Int) -> Data {
         ctx.restoreGState()
     }
 
-    // Base: matte graphite, lighter at the top.
+    // Base: the app colour, lighter at the top.
     ctx.saveGState()
     ctx.addPath(squircle); ctx.clip()
-    ctx.drawLinearGradient(grad([c(112, 114, 121), c(86, 88, 95), c(66, 68, 74)], [0, 0.5, 1]),
+    ctx.drawLinearGradient(grad([c(243, 190, 96), c(233, 170, 76), c(225, 149, 56)], [0, 0.5, 1]),
                            start: CGPoint(x: 0, y: rect.maxY), end: CGPoint(x: 0, y: rect.minY), options: [])
     ctx.restoreGState()
 
@@ -74,7 +74,7 @@ func draw(_ px: Int) -> Data {
         let box = path.boundingBoxOfPath
         for (off, blur, a) in [(0.16, 0.22, shadowAlpha), (0.5, 1.0, shadowAlpha * 0.65)] as [(CGFloat, CGFloat, CGFloat)] {
             ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: -u * off), blur: u * blur, color: c(20, 20, 26, a))
+            ctx.setShadow(offset: CGSize(width: 0, height: -u * off), blur: u * blur, color: c(20, 20, 26, a * 0.55))
             ctx.addPath(path); ctx.setFillColor(bottom); ctx.fillPath()
             ctx.restoreGState()
         }
@@ -131,9 +131,9 @@ func draw(_ px: Int) -> Data {
     }
     sun.addPath(rays.copy(strokingWithWidth: 0.52 * u, lineCap: .round, lineJoin: .round, miterLimit: 10))
 
-    let gray = (c(206, 204, 200), c(176, 174, 171))
-    let white = (c(250, 249, 247), c(222, 219, 216))
-    let dim = (c(128, 130, 137), c(104, 106, 112))
+    let gray = (c(255, 255, 255, 0.36), c(255, 255, 255, 0.29))
+    let white = (c(255, 255, 255, 0.60), c(255, 255, 255, 0.50))
+    let dim = (c(255, 255, 255, 0.17), c(255, 255, 255, 0.13))
     material(monitor, top: gray.0, bottom: gray.1, shadowAlpha: 0.38)
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: 0, width: center.x, height: s))
