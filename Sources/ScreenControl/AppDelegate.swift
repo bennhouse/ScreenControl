@@ -134,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggles.refresh()
         displays.setPanelVisible(true)
         keyboard.setPanelVisible(true)
+        toggles.setPanelVisible(true)
         anchorDisplay = Self.displayID(of: statusWindow)
         anchorMode = statusWindow.screen.map { (size: $0.frame.size, scale: $0.backingScaleFactor) }
         panel.show(below: statusWindow)
@@ -207,6 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.highlight(false)
         displays.setPanelVisible(false)
         keyboard.setPanelVisible(false)
+        toggles.setPanelVisible(false)
         if let outsideClickMonitor {
             NSEvent.removeMonitor(outsideClickMonitor)
             self.outsideClickMonitor = nil

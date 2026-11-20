@@ -36,6 +36,18 @@ enum PrivateAPI {
         return setBrightness(display, Float(min(max(value, 0), 1))) == 0
     }
 
+    private typealias RegisterBrightness = @convention(c) (CGDirectDisplayID, UnsafeRawPointer?, CFNotificationCallback) -> Int32
+    private static let registerBrightness = symbol(displayServices, "DisplayServicesRegisterForBrightnessChangeNotifications", as: RegisterBrightness.self)
+
+    /// Calls `callback` whenever the display's brightness changes, from anywhere (keys,
+    /// Touch Bar, Control Center, auto-brightness, other apps), with the new value in the
+    /// user info under "value". The callback runs on a background thread.
+    @discardableResult
+    static func observeBrightness(of display: CGDirectDisplayID, observer: UnsafeRawPointer, callback: CFNotificationCallback) -> Bool {
+        guard let registerBrightness else { return false }
+        return registerBrightness(display, observer, callback) == 0
+    }
+
     static func canChangeBrightness(of display: CGDirectDisplayID) -> Bool {
         if let canChange { return canChange(display) }
         return brightness(of: display) != nil

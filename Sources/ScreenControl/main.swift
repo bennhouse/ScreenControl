@@ -14,6 +14,10 @@ if CommandLine.arguments.contains("--selftest-persist") {
     SelfTest.runPersist()
     exit(0)
 }
+if CommandLine.arguments.contains("--selftest-black") {
+    SelfTest.runBlack()
+    exit(0)
+}
 if CommandLine.arguments.contains("--selftest-power") {
     SelfTest.runPower()
     exit(0)

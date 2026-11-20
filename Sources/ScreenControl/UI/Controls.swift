@@ -3,6 +3,8 @@ import SwiftUI
 
 extension Color {
     static var systemAccent: Color { Color(nsColor: .controlAccentColor) }
+    /// Control Center's Night Shift button when on: always this orange, whatever the accent colour.
+    static let nightShiftOrange = Color(.sRGB, red: 1, green: 166 / 255, blue: 0)
 }
 
 // MARK: - Slider
@@ -28,18 +30,36 @@ struct CCSlider: View {
             let knobCenter = height / 2 + CGFloat(min(max(value, 0), 1)) * (width - height)
             ZStack(alignment: .leading) {
                 Capsule().fill(trackColor)
-                if enabled {
-                    Capsule().fill(Color.white).frame(width: knobCenter + height / 2)
-                }
+                // Fill and knob fade out when the slider is greyed out, rather than vanish.
+                Capsule().fill(Color.white).frame(width: knobCenter + height / 2)
+                    .opacity(enabled ? 1 : 0)
                 // The system draws its thin grey outline over the white fill too.
                 Capsule().strokeBorder(rimColor, lineWidth: 1)
-                if enabled {
+                do {
                     // 1 pt smaller all round than the track, so it sits inside the thin outline.
-                    Circle()
-                        .fill(Color.white)
-                        .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.25), radius: 0.8, x: 0, y: 0.3)
-                        .frame(width: height - 2, height: height - 2)
-                        .offset(x: knobCenter - height / 2 + 1)
+                    // Its dark edge fades out on the left as the knob reaches the glyph, so it
+                    // never cuts across it, and comes back as the knob moves away.
+                    let size = height - 2
+                    // The glyph ends about 18 pt from the start; the edge (knob centre - 10 pt)
+                    // fades over the last 7 pt before it and is gone while over the glyph.
+                    let clear = min(max((knobCenter - 28) / 7, 0), 1)
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.25), radius: 0.8, x: 0, y: 0.3)
+                            .frame(width: size, height: size)
+                            .padding(3)
+                            .mask(LinearGradient(stops: [.init(color: .black.opacity(clear), location: 0),
+                                                         .init(color: .black.opacity(clear), location: 0.45),
+                                                         .init(color: .black, location: 0.7)],
+                                                 startPoint: .leading, endPoint: .trailing))
+                            .padding(-3)
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: size, height: size)
+                    }
+                    .offset(x: knobCenter - height / 2 + 1)
+                    .opacity(enabled ? 1 : 0)
                 }
                 glyphView
                     .frame(width: height, height: height)

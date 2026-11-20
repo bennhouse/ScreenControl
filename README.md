@@ -29,11 +29,12 @@ It is a small native app (Swift, AppKit and SwiftUI). It needs no privacy permis
 ### Brightness
 
 - One slider per display, external monitors first, then the built-in display.
-- The built-in display is set through macOS, as the brightness keys do.
+- The built-in display is set through macOS, as the brightness keys do. Unlike the system slider, it stops at 1% and never turns the screen off: for that, use **Black screen**.
 - External monitors are set over DDC/CI.
   - Writes are coalesced while you drag, so a slow monitor never lags behind.
   - A monitor that doesn't answer DDC shows a greyed-out slider, as in the system menu.
 - Changes made elsewhere show up while the panel is open: brightness keys, auto-brightness, the monitor's own buttons.
+  - The built-in display's slider follows them live, gliding along as you drag the Touch Bar slider or hold a brightness key (macOS reports every change). The keyboard backlight is read ten times a second; external monitors when the panel opens.
 
 ### Reduce brightness
 
@@ -44,6 +45,14 @@ Below each external monitor's slider.
 - **The darkest setting** still leaves about 10% of the light, so the screen never goes black and you can always reach the control.
 - **Remembered** across restarts.
 - **Emergency shortcut:** <kbd>⌃</kbd><kbd>⌥</kbd><kbd>⌘</kbd><kbd>B</kbd> turns it off on every monitor, from anywhere.
+
+### Black screen
+
+Below the built-in display's slider.
+
+- **On:** the brightness goes to a true 0 and the backlight turns off, but the display stays on: windows stay where they are and the mouse can still go there. To take the display out of the desktop, use the power button instead.
+- **Off:** the earlier brightness comes back.
+- **Any brightness change ends it:** the brightness keys light the screen again. While the screen is black, the slider is greyed out.
 
 ### Display power
 
@@ -82,7 +91,7 @@ To keep only one Display icon, hide the system one: **System Settings → Contro
 
 ### Download
 
-1. Download `ScreenControl-1.2.dmg` from [Releases](../../releases) and drag ScreenControl to Applications.
+1. Download `ScreenControl-1.3.dmg` from [Releases](../../releases) and drag ScreenControl to Applications.
 2. ScreenControl is not notarized, so macOS blocks it the first time. Open System Settings › Privacy & Security, scroll down and click **Open Anyway**. You can also clear the quarantine flag from Terminal:
    ```sh
    xattr -dr com.apple.quarantine /Applications/ScreenControl.app
@@ -111,7 +120,7 @@ Options:
 | Feature | How it works |
 | --- | --- |
 | External brightness | DDC/CI over the display coprocessor's I²C interface (`IOAVService`), VCP code `0x10`. Each monitor is matched to its I²C channel by vendor, model and serial number. |
-| Built-in brightness | DisplayServices, the framework behind the brightness keys. |
+| Built-in brightness, Black screen | DisplayServices, the framework behind the brightness keys. |
 | Reduce brightness | Scales the display's gamma table. It darkens everything, the cursor included, and doesn't show in screenshots or recordings. |
 | Display power | `SLSConfigureDisplayEnabled` in a session-scoped display configuration. |
 | Night Shift, True Tone, keyboard backlight | CoreBrightness clients, the ones Control Center uses. |
@@ -157,6 +166,7 @@ The binary has a few modes for checking the hardware paths from the terminal:
 | `ScreenControl --selftest` | Checks DDC read and write, gamma dimming, Reduce brightness and the system toggles. Each screen dims for about a second. |
 | `ScreenControl --selftest-writes` | Flips Dark Mode, True Tone, Night Shift and the keyboard backlight, and puts each one back. It also checks that dimming survives Night Shift. |
 | `ScreenControl --selftest-power` | Turns the built-in display off and on. It checks its brightness and gamma afterwards, and watches a dimmed external monitor for flashes. |
+| `ScreenControl --selftest-black` | Moves the built-in slider to its bottom (1%, never 0), then turns Black screen on (true 0) and off. The built-in screen goes black for a second. |
 | `ScreenControl --selftest-persist` | Turns the built-in display off, simulates quitting and reopening the app, then turns the display back on. |
 | `ScreenControl --snapshot out.png [--dark]` | Renders the panel to an image. |
 

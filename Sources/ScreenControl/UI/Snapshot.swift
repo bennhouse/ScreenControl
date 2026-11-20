@@ -10,7 +10,9 @@ enum Snapshot {
         external.canSetBrightness = !reference
         let builtin = DisplayItem(id: 1, name: reference ? "Monitor Retina integrato" : "Built-in Retina Display",
                                   isBuiltin: true, key: "mock-int")
-        builtin.brightness = 0.728
+        builtin.brightness = CommandLine.arguments.firstIndex(of: "--builtin").flatMap {
+            Double(CommandLine.arguments[$0 + 1])
+        } ?? 0.728
         builtin.canSetBrightness = true
 
         if CommandLine.arguments.contains("--off") { builtin.isOff = true; builtin.showsOff = true }
@@ -23,6 +25,7 @@ enum Snapshot {
         toggles.nightShiftAvailable = true
         toggles.trueToneAvailable = true
         toggles.trueTone = true
+        toggles.nightShift = CommandLine.arguments.contains("--nightshift")
 
         var strings = PanelStrings()
         if reference {

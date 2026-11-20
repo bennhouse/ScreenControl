@@ -1,5 +1,5 @@
 import Combine
-import Foundation
+import SwiftUI
 
 /// Built-in keyboard backlight, shown as a slider when the Mac has one.
 final class KeyboardBacklight: ObservableObject {
@@ -9,6 +9,7 @@ final class KeyboardBacklight: ObservableObject {
     private let client: KeyboardBacklightClient?
     private var pollTimer: Timer?
     private var dragging = false
+    private var lastWrite = Date.distantPast
 
     init(live: Bool = true) {
         client = live ? KeyboardBacklightClient() : nil
@@ -16,24 +17,33 @@ final class KeyboardBacklight: ObservableObject {
         refresh()
     }
 
-    func refresh() {
-        guard !dragging, let value = client?.brightness else { return }
-        if abs(value - brightness) > 0.002 { brightness = value }
+    func refresh(animated: Bool = false) {
+        guard !dragging, Date().timeIntervalSince(lastWrite) > 0.6, let value = client?.brightness,
+              abs(value - brightness) > 0.002 else { return }
+        if animated {
+            withAnimation(DisplayController.followAnimation) { brightness = value }
+        } else {
+            brightness = value
+        }
     }
 
     func setBrightness(_ value: Double) {
         brightness = min(max(value, 0), 1)
+        lastWrite = Date()
         client?.setBrightness(brightness)
     }
 
     func setDragging(_ value: Bool) { dragging = value }
 
-    /// While the panel is open, follows changes from the keyboard keys and ambient light.
+    /// While the panel is open, follows changes from the keyboard keys and ambient light,
+    /// gliding between readings ten times a second.
     func setPanelVisible(_ visible: Bool) {
         pollTimer?.invalidate()
         pollTimer = nil
         guard visible, client != nil else { return }
         refresh()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in self?.refresh() }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in self?.refresh(animated: true) }
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
     }
 }

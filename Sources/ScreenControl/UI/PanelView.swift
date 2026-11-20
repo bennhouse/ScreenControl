@@ -5,6 +5,7 @@ struct PanelStrings {
     var nightShift = "Night Shift"
     var trueTone = "True Tone"
     var reduceBrightness = "Reduce brightness"
+    var blackScreen = "Black screen"
     var keyboardBrightness = "Keyboard Brightness"
     var off = "Off"
     var displaySettings = "Display Settings…"
@@ -37,12 +38,13 @@ struct PanelView: View {
             }
 
             HStack(alignment: .top, spacing: 0) {
-                // Dark Mode turns white when on, as in Control Center; the others use the accent colour.
+                // As in Control Center, when on: Dark Mode turns white, Night Shift orange,
+                // True Tone the accent colour.
                 RoundToggle(title: strings.darkMode, subtitle: toggles.darkModeSubtitle, isOn: toggles.darkMode,
                             onFill: .white, onIcon: Color(white: 0.1),
                             icon: { DarkModeIcon(color: $0) }, action: toggles.toggleDarkMode)
                 RoundToggle(title: strings.nightShift, subtitle: toggles.nightShiftSubtitle, isOn: toggles.nightShift,
-                            enabled: toggles.nightShiftAvailable, icon: { NightShiftIcon(color: $0) }, action: toggles.toggleNightShift)
+                            enabled: toggles.nightShiftAvailable, onFill: .nightShiftOrange, icon: { NightShiftIcon(color: $0) }, action: toggles.toggleNightShift)
                 RoundToggle(title: strings.trueTone, subtitle: toggles.trueToneSubtitle, isOn: toggles.trueTone,
                             enabled: toggles.trueToneAvailable, icon: { TrueToneIcon(color: $0) }, action: toggles.toggleTrueTone)
             }
@@ -104,14 +106,16 @@ private struct DisplaySection: View {
 
             if !item.showsOff {
                 CCSlider(
-                    value: item.dimEnabled ? item.dimLevel : item.brightness,
-                    enabled: item.dimEnabled || item.canSetBrightness,
+                    value: item.dimEnabled ? item.dimLevel : controller.sliderBrightness(of: item),
+                    // Greyed out while the built-in screen is black (brightness at 0, from Black screen
+                    // or the brightness keys), as the system slider does.
+                    enabled: item.dimEnabled || (item.canSetBrightness && !item.showsBlack),
                     glyph: item.dimEnabled ? .dim : .sun,
                     onChange: { value in
                         if item.dimEnabled {
                             controller.setDimLevel(value, for: item)
                         } else {
-                            controller.setBrightness(value, for: item)
+                            controller.setSliderBrightness(value, for: item)
                         }
                     },
                     onDragging: { controller.setDragging($0, for: item) }
@@ -123,6 +127,13 @@ private struct DisplaySection: View {
                         withAnimation(.easeOut(duration: 0.2)) {
                             controller.setDimEnabled(!item.dimEnabled, for: item)
                         }
+                    }
+                    .padding(.top, 8)
+                    .transition(.opacity)
+                }
+                if showReduceRow && item.isBuiltin && item.canSetBrightness {
+                    CheckRow(title: strings.blackScreen, isOn: item.showsBlackChecked) {
+                        controller.setBlackScreen(!item.isBlack, for: item)
                     }
                     .padding(.top, 8)
                     .transition(.opacity)

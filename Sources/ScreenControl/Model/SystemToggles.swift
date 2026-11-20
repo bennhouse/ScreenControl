@@ -13,6 +13,9 @@ final class SystemToggles: ObservableObject {
 
     private let nightShiftClient: NightShiftClient?
     private let trueToneClient: TrueToneClient?
+    private var pollTimer: Timer?
+    /// When a toggle here was last used: the poll waits until its change has settled.
+    private var lastAction = Date.distantPast
 
     init(live: Bool = true) {
         nightShiftClient = live ? NightShiftClient() : nil
@@ -34,6 +37,20 @@ final class SystemToggles: ObservableObject {
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main
         ) { [weak self] _ in self?.refresh() }
         nightShiftClient?.onChange { [weak self] in self?.refresh() }
+    }
+
+    /// While the panel is open, follows True Tone (which sends no notification) and anything
+    /// else changed elsewhere, once a second. Dark Mode and Night Shift also notify.
+    func setPanelVisible(_ visible: Bool) {
+        pollTimer?.invalidate()
+        pollTimer = nil
+        guard visible, nightShiftClient != nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, Date().timeIntervalSince(self.lastAction) > 1 else { return }
+            self.refresh()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
     }
 
     func refresh() {
@@ -83,12 +100,14 @@ final class SystemToggles: ObservableObject {
     func toggleDarkMode() {
         let on = !darkMode
         darkMode = on
+        lastAction = Date()
         PrivateAPI.setDarkMode(on) { [weak self] in self?.refresh() }
     }
 
     func toggleNightShift() {
         guard nightShiftAvailable else { return }
         nightShift.toggle()
+        lastAction = Date()
         nightShiftClient?.setEnabled(nightShift)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.refresh() }
     }
@@ -96,6 +115,7 @@ final class SystemToggles: ObservableObject {
     func toggleTrueTone() {
         guard trueToneAvailable else { return }
         trueTone.toggle()
+        lastAction = Date()
         trueToneClient?.setEnabled(trueTone)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.refresh() }
     }

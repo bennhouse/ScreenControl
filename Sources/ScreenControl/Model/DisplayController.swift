@@ -32,6 +32,19 @@ final class DisplayItem: ObservableObject, Identifiable {
     var powerBrightness: Double?
     /// Brightness to write once the display's DDC channel is found again after turning on.
     var pendingBrightness: Double?
+    /// Hardware brightness before "Black screen" was turned on.
+    var blackSavedBrightness: Double?
+
+    /// "Black screen" (built-in display): hardware brightness at a true 0, backlight off. Any
+    /// other brightness change, here or with the brightness keys, ends it.
+    var isBlack: Bool { isBuiltin && brightness <= 0 }
+    /// The Black screen button's slide is under way: the slider stays lit until it is over.
+    @Published var blackSliding = false
+    /// Black screen is being turned off: the button already shows it off.
+    @Published var blackLeaving = false
+    /// What the panel shows: a greyed-out slider and a checked Black screen row.
+    var showsBlack: Bool { isBlack && !blackSliding }
+    var showsBlackChecked: Bool { isBlack && !blackLeaving }
 
     init(id: CGDirectDisplayID, name: String, isBuiltin: Bool, key: String) {
         self.id = id
@@ -47,6 +60,10 @@ final class DisplayController: ObservableObject {
     /// Gamma multiplier at the bottom of the dimming slider. Gamma-encoded values scale
     /// luminance roughly by f^2.2, so 0.35 leaves about 10% of the light: dark, never black.
     static let dimFloor = 0.35
+    /// Lowest built-in brightness the slider writes (1%). At 0 the backlight goes off, as with
+    /// the brightness keys; the slider stops just above, so it never turns the screen off.
+    /// "Black screen" goes to 0.
+    static let builtinMinimum = 0.01
     /// The panel's layout animation; the window resizes with the same curve and duration.
     static let layoutAnimation = Animation.easeInOut(duration: PanelWindow.resizeDuration)
 
@@ -64,6 +81,9 @@ final class DisplayController: ObservableObject {
     /// When brightness was last written: polling skips a display for a moment after that, so
     /// the slider does not bounce back while the write is still on its way.
     private var lastWrite: [CGDirectDisplayID: Date] = [:]
+    /// Built-in displays whose brightness changes are observed.
+    private var observedBrightness: Set<CGDirectDisplayID> = []
+    private var panelVisible = false
     private let live: Bool
 
     init(live: Bool = true) {
@@ -126,6 +146,7 @@ final class DisplayController: ObservableObject {
     func setPanelVisible(_ visible: Bool) {
         pollTimer?.invalidate()
         pollTimer = nil
+        panelVisible = visible
         guard live, visible else { return }
         readBuiltinBrightness()
         readExternalBrightness()
@@ -187,6 +208,7 @@ final class DisplayController: ObservableObject {
 
         for item in items where item.isBuiltin && !item.isOff {
             item.canSetBrightness = PrivateAPI.canChangeBrightness(of: item.id)
+            observeBrightness(of: item.id)
         }
         readBuiltinBrightness()
         for item in items where item.dimEnabled && !item.isOff && turnedOnAt[item.id] == nil {
@@ -224,13 +246,46 @@ final class DisplayController: ObservableObject {
     // MARK: Brightness
 
     private func readBuiltinBrightness() {
-        for item in displays where item.isBuiltin && !item.isOff && item.id != draggingDisplay
-            && Date().timeIntervalSince(lastWrite[item.id] ?? .distantPast) > 0.6 {
-            if let value = PrivateAPI.brightness(of: item.id), abs(value - item.brightness) > 0.002 {
-                item.brightness = value
-            }
+        for item in displays where item.isBuiltin && !item.isOff {
+            if let value = PrivateAPI.brightness(of: item.id) { showOutsideBrightness(value, for: item) }
         }
     }
+
+    /// Follows built-in brightness changes made elsewhere as they happen: the brightness keys
+    /// and the Touch Bar send a stream of values, and the slider glides between them.
+    private func observeBrightness(of display: CGDirectDisplayID) {
+        guard live, !observedBrightness.contains(display) else { return }
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        let registered = PrivateAPI.observeBrightness(of: display, observer: observer) { _, observer, _, _, info in
+            guard let observer, let value = (info as NSDictionary?)?["value"] as? NSNumber else { return }
+            let controller = Unmanaged<DisplayController>.fromOpaque(observer).takeUnretainedValue()
+            let brightness = value.doubleValue
+            DispatchQueue.main.async {
+                for item in controller.displays where item.isBuiltin && !item.isOff {
+                    controller.showOutsideBrightness(brightness, for: item)
+                }
+            }
+        }
+        if registered { observedBrightness.insert(display) }
+    }
+
+    /// A brightness read back or reported by macOS. Skipped while this app is the one changing
+    /// it (dragging, ramping, or a write still on its way), so the slider never bounces back.
+    private func showOutsideBrightness(_ value: Double, for item: DisplayItem) {
+        guard item.id != draggingDisplay, brightnessRamps[item.id] == nil,
+              Date().timeIntervalSince(lastWrite[item.id] ?? .distantPast) > 0.6,
+              abs(value - item.brightness) > 0.002 else { return }
+        let value = min(max(value, 0), 1)
+        if panelVisible {
+            withAnimation(Self.followAnimation) { item.brightness = value }
+        } else {
+            item.brightness = value
+        }
+    }
+
+    /// How a slider moves to a value changed elsewhere: short enough to keep up with a drag on
+    /// the Touch Bar, long enough to smooth over the steps between updates.
+    static let followAnimation = Animation.easeOut(duration: 0.18)
 
     /// Matches external displays to DDC channels and reads their brightness. A monitor that is
     /// still waking up may not answer: up to three more attempts follow, two seconds apart.
@@ -286,6 +341,20 @@ final class DisplayController: ObservableObject {
         }
     }
 
+    /// The brightness slider's position. On the built-in display the slider's bottom is
+    /// `builtinMinimum`, not off.
+    func sliderBrightness(of item: DisplayItem) -> Double {
+        guard item.isBuiltin else { return item.brightness }
+        let floor = Self.builtinMinimum
+        return min(max((item.brightness - floor) / (1 - floor), 0), 1)
+    }
+
+    func setSliderBrightness(_ position: Double, for item: DisplayItem) {
+        guard item.isBuiltin else { return setBrightness(position, for: item) }
+        let floor = Self.builtinMinimum
+        setBrightness(floor + (1 - floor) * min(max(position, 0), 1), for: item)
+    }
+
     func setBrightness(_ value: Double, for item: DisplayItem) {
         let value = min(max(value, 0), 1)
         item.brightness = value
@@ -301,15 +370,23 @@ final class DisplayController: ObservableObject {
 
     /// Moves hardware brightness smoothly (built-in: DisplayServices; external: DDC, whose
     /// writes are coalesced, so a slow monitor simply takes fewer steps).
-    func rampBrightness(_ item: DisplayItem, to target: Double, duration: TimeInterval) {
+    /// With `updatesSlider` false only the hardware moves: the caller animates the slider.
+    func rampBrightness(_ item: DisplayItem, to target: Double, duration: TimeInterval, updatesSlider: Bool = true) {
         brightnessRamps[item.id]?.invalidate()
         let start = item.isBuiltin ? (PrivateAPI.brightness(of: item.id) ?? item.brightness) : item.brightness
         let began = Date()
-        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] timer in
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
             guard let self else { return timer.invalidate() }
             let t = min(Date().timeIntervalSince(began) / duration, 1)
             let eased = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
-            self.setBrightness(start + (target - start) * eased, for: item)
+            let value = start + (target - start) * eased
+            if updatesSlider || !item.isBuiltin {
+                self.setBrightness(value, for: item)
+            } else {
+                self.lastWrite[item.id] = Date()
+                let id = item.id
+                self.builtinWriter.submit(value) { PrivateAPI.setBrightness($0, of: id) }
+            }
             if t >= 1 {
                 timer.invalidate()
                 self.brightnessRamps[item.id] = nil
@@ -504,6 +581,42 @@ final class DisplayController: ObservableObject {
             setDimEnabled(false, for: item)
         }
         gamma.restoreAll()
+    }
+
+    // MARK: Black screen
+
+    /// Built-in display only. On: hardware brightness to a true 0, so the backlight goes off
+    /// while the display stays on and part of the desktop. Off: the brightness from before.
+    ///
+    /// The slider glides to 0 and then fades to grey; turning it off, it fades back in and
+    /// then glides up. The backlight follows the slider.
+    func setBlackScreen(_ on: Bool, for item: DisplayItem) {
+        guard item.isBuiltin, item.canSetBrightness, on != item.isBlack, !item.blackSliding else { return }
+        let slide = 0.4, fade = 0.3
+        if on {
+            item.blackSavedBrightness = item.brightness
+            item.blackSliding = true
+            rampBrightness(item, to: 0, duration: slide, updatesSlider: false)
+            withAnimation(.easeInOut(duration: slide)) { item.brightness = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + slide) {
+                withAnimation(.easeInOut(duration: fade)) { item.blackSliding = false }
+            }
+        } else {
+            let target = max(item.blackSavedBrightness ?? 0.5, Self.builtinMinimum)
+            item.blackSavedBrightness = nil
+            withAnimation(.easeInOut(duration: fade)) {
+                item.blackSliding = true
+                item.blackLeaving = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + fade) {
+                self.rampBrightness(item, to: target, duration: slide, updatesSlider: false)
+                withAnimation(.easeInOut(duration: slide)) { item.brightness = target }
+                DispatchQueue.main.asyncAfter(deadline: .now() + slide) {
+                    item.blackSliding = false
+                    item.blackLeaving = false
+                }
+            }
+        }
     }
 
     private func saveDim(_ item: DisplayItem) {

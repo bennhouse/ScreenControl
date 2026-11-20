@@ -336,3 +336,37 @@ extension SelfTest {
         second.stop()
     }
 }
+
+extension SelfTest {
+    /// `ScreenControl --selftest-black`: the built-in slider's bottom (1%, never 0), then
+    /// Black screen on (true 0) and off (brightness from before). The screen goes black for a
+    /// second.
+    static func runBlack() {
+        func wait(_ seconds: Double) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+        _ = NSApplication.shared
+        let controller = DisplayController()
+        controller.start()
+        wait(1.5)
+        guard let item = controller.displays.first(where: { $0.isBuiltin && !$0.isOff }), item.canSetBrightness else {
+            print("no built-in display with brightness control"); return
+        }
+        let before = PrivateAPI.brightness(of: item.id) ?? -1
+        print("Built-in brightness: \(before)")
+
+        controller.setSliderBrightness(0, for: item)
+        wait(0.8)
+        let bottom = PrivateAPI.brightness(of: item.id) ?? -1
+        print("Slider at 0 → \(bottom) (expected \(DisplayController.builtinMinimum)) black \(item.isBlack)")
+        controller.setBrightness(before, for: item)
+        wait(0.8)
+
+        controller.setBlackScreen(true, for: item)
+        wait(1)
+        print("Black screen on → \(PrivateAPI.brightness(of: item.id) ?? -1) (expected 0) black \(item.isBlack)")
+        controller.setBlackScreen(false, for: item)
+        wait(1)
+        let after = PrivateAPI.brightness(of: item.id) ?? -1
+        print("Black screen off → \(after) (expected \(before)) black \(item.isBlack)")
+        if abs(after - before) > 0.01 { controller.setBrightness(before, for: item); wait(0.5) }
+    }
+}
