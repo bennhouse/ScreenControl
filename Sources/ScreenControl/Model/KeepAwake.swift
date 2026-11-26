@@ -12,6 +12,18 @@ final class KeepAwake: ObservableObject {
     @Published private(set) var shortcut: Shortcut
     /// False when the shortcut could not be registered (another app owns it).
     @Published private(set) var shortcutActive = true
+    /// Called when a session is turned off because it reached `maximumDuration`.
+    var onReachedLimit: (() -> Void)?
+
+    /// The longest a session lasts, however it was turned on (the shortcut, "Indefinitely", or
+    /// choosing another duration while on): counted from when it was turned on, never reset.
+    /// `SCREENCONTROL_KEEPAWAKE_LIMIT=<seconds>` shortens it, for testing.
+    static var maximumDuration: TimeInterval =
+        Double(ProcessInfo.processInfo.environment["SCREENCONTROL_KEEPAWAKE_LIMIT"] ?? "") ?? 24 * 60 * 60
+    /// When the running session was turned on.
+    private(set) var sessionStart: Date?
+    /// When the running session is turned off at the latest.
+    var limitDate: Date? { sessionStart.map { $0.addingTimeInterval(Self.maximumDuration) } }
 
     static let defaultShortcut = Shortcut(keyCode: UInt16(kVK_ANSI_L), modifiers: NSEvent.ModifierFlags([.command, .shift]).rawValue)
     static let durations: [(title: String, minutes: Int?)] = [
@@ -21,6 +33,8 @@ final class KeepAwake: ObservableObject {
 
     private var assertion: IOPMAssertionID = 0
     private var timer: Timer?
+    private var limitTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
     private var hotKey: HotKey?
     private static let shortcutKey = "keepAwakeShortcut"
 
@@ -56,7 +70,12 @@ final class KeepAwake: ObservableObject {
         }
         timer?.invalidate()
         timer = nil
-        if let seconds {
+        if sessionStart == nil {
+            sessionStart = Date()
+            scheduleLimit()
+        }
+        // A timed session never runs past the limit either.
+        if let seconds, let limit = limitDate, Date().addingTimeInterval(seconds) < limit {
             let end = Date().addingTimeInterval(seconds)
             endDate = end
             let t = Timer(fire: end, interval: 0, repeats: false) { [weak self] _ in self?.stop() }
@@ -72,10 +91,42 @@ final class KeepAwake: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        limitTimer?.invalidate()
+        limitTimer = nil
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        wakeObserver = nil
+        sessionStart = nil
         if assertion != 0 { IOPMAssertionRelease(assertion) }
         assertion = 0
         endDate = nil
         isActive = false
+    }
+
+    /// The limit is checked by a timer and again on wake: timers don't count time asleep
+    /// (lid closed), so the Mac could otherwise stay awake past 24 hours of wall time.
+    private func scheduleLimit() {
+        guard let limit = limitDate else { return }
+        let t = Timer(fire: limit, interval: 0, repeats: false) { [weak self] _ in self?.checkLimit() }
+        t.tolerance = 1
+        RunLoop.main.add(t, forMode: .common)
+        limitTimer = t
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.checkLimit() }
+    }
+
+    private func checkLimit() {
+        guard isActive, let limit = limitDate else { return }
+        guard Date() >= limit.addingTimeInterval(-1) else {
+            // Woke before the limit: the timer, paused while asleep, is late now. Set it again.
+            limitTimer?.invalidate()
+            let t = Timer(fire: limit, interval: 0, repeats: false) { [weak self] _ in self?.checkLimit() }
+            t.tolerance = 1
+            RunLoop.main.add(t, forMode: .common)
+            limitTimer = t
+            return
+        }
+        stop()
+        onReachedLimit?()
     }
 
     // MARK: Shortcut

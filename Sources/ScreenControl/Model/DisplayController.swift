@@ -25,6 +25,10 @@ final class DisplayItem: ObservableObject, Identifiable {
     @Published var showsOff = false
 
     var ddc: DDCChannel?
+    /// The monitor has answered a brightness read on its DDC channel at least once. A monitor
+    /// that is matched but never answers (or reports brightness as unsupported) can't be set:
+    /// its slider stays disabled and nothing is written to it.
+    var ddcAnswered = false
     var ddcMaximum: UInt16 = 100
     /// Hardware brightness before "Reduce brightness" was turned on.
     var savedBrightness: Double?
@@ -150,7 +154,8 @@ final class DisplayController: ObservableObject {
         guard live, visible else { return }
         readBuiltinBrightness()
         readExternalBrightness()
-        if displays.contains(where: { !$0.isBuiltin && !$0.isOff && $0.ddc == nil }) { connectDDC() }
+        // Externals without a channel, or whose monitor has not answered yet, are looked for again.
+        if displays.contains(where: { !$0.isBuiltin && !$0.isOff && !$0.canSetBrightness }) { connectDDC() }
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
             self?.readBuiltinBrightness()
         }
@@ -306,13 +311,15 @@ final class DisplayController: ObservableObject {
                 NSLog("ScreenControl: DDC matched %d of %d external displays, %d answered", channels.count, specs.count, values.count)
                 for item in self.displays where !item.isBuiltin && !item.isOff {
                     item.ddc = channels[item.id]
-                    item.canSetBrightness = item.ddc != nil
+                    if item.ddc == nil { item.ddcAnswered = false }
+                    if values[item.id] != nil { item.ddcAnswered = true }
+                    item.canSetBrightness = item.ddc != nil && item.ddcAnswered
                     if let value = values[item.id], item.id != self.draggingDisplay {
                         item.ddcMaximum = value.maximum
                         item.brightness = Double(value.current) / Double(value.maximum)
                     }
                     // Back from off: bring its brightness back now that DDC answers again.
-                    if let pending = item.pendingBrightness, item.ddc != nil {
+                    if let pending = item.pendingBrightness, item.canSetBrightness {
                         item.pendingBrightness = nil
                         self.rampBrightness(item, to: pending, duration: 0.5)
                     }
@@ -329,7 +336,7 @@ final class DisplayController: ObservableObject {
 
     private func readExternalBrightness() {
         for item in displays where !item.isBuiltin {
-            guard let channel = item.ddc else { continue }
+            guard item.canSetBrightness, let channel = item.ddc else { continue }
             DispatchQueue.global(qos: .userInitiated).async {
                 guard let value = channel.read(0x10) else { return }
                 DispatchQueue.main.async {
@@ -362,7 +369,7 @@ final class DisplayController: ObservableObject {
         if item.isBuiltin {
             let id = item.id
             builtinWriter.submit(value) { PrivateAPI.setBrightness($0, of: id) }
-        } else if let channel = item.ddc {
+        } else if item.canSetBrightness, let channel = item.ddc {
             channel.write(0x10, value: UInt16((value * Double(item.ddcMaximum)).rounded()))
             defaults.set(value, forKey: "ddc.\(item.key).last")
         }
@@ -474,7 +481,7 @@ final class DisplayController: ObservableObject {
             if item.isBuiltin {
                 item.powerBrightness = PrivateAPI.brightness(of: item.id)
                 PrivateAPI.setBrightness(0, of: item.id)
-            } else if let channel = item.ddc {
+            } else if item.canSetBrightness, let channel = item.ddc {
                 item.powerBrightness = item.dimEnabled ? (item.savedBrightness ?? item.brightness) : item.brightness
                 let channelCopy = channel
                 DispatchQueue.global(qos: .userInitiated).sync { channelCopy.writeNow(0x10, value: 0) }
@@ -518,6 +525,10 @@ final class DisplayController: ObservableObject {
             // back black.
             gamma.restoreAndForget(item.id)
             item.ddc = nil
+            item.ddcAnswered = false
+            // Found again (and asked) once it is back on: until then nothing is written to it,
+            // and its brightness waits in `pendingBrightness`.
+            if !item.isBuiltin { item.canSetBrightness = false }
         }
         for item in turnOn {
             turnedOnAt[item.id] = Date()
@@ -536,7 +547,7 @@ final class DisplayController: ObservableObject {
                 guard let saved else { return }
                 if item.isBuiltin {
                     self.rampBrightness(item, to: saved, duration: 0.5)
-                } else if item.ddc != nil {
+                } else if item.canSetBrightness {
                     self.rampBrightness(item, to: saved, duration: 0.5)
                 } else {
                     item.pendingBrightness = saved // ramped once DDC answers again

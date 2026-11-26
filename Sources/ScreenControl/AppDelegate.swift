@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let keepAwake = KeepAwake()
     private var hotKey: HotKey?
     private var outsideClickMonitor: Any?
+    private var statusClickMonitor: Any?
     /// The display whose menu bar the panel was opened from.
     private var anchorDisplay: CGDirectDisplayID?
     /// That display's size and scale when last seen, to tell a resolution change on it from
@@ -23,12 +24,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // Variable length: the item is as wide as its icon. A square item is as wide as the menu
+        // bar is tall, and a resolution with a thinner menu bar cut the icon off at the sides.
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = StatusIcon.image(keepAwake: false)
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
+        }
+        // Clicks on the icon are taken before the button sees them. The button would track the
+        // click and, on mouse up, take away the highlight that shows the panel is open: the
+        // icon flickered. The action above stays for VoiceOver and other accessibility clicks.
+        statusClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, let window = event.window, window.className.contains("StatusBar") else { return event }
+            self.handleStatusClick(event)
+            return nil
         }
 
         let view = PanelView(displays: displays, toggles: toggles, keyboard: keyboard, onOpenSettings: { [weak self] in
@@ -45,14 +58,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         displays.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, self.panel.isVisible else { return }
+                guard let self, self.panel.isShown else { return }
                 DispatchQueue.main.async { self.followAnchor(animated: true) }
             }
             .store(in: &cancellables)
         // macOS moves open windows when a display comes or goes: put the panel back.
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
-            guard let self, self.panel.isVisible else { return }
+            guard let self else { return }
+            self.refreshStatusIcon()
+            guard self.panel.isShown else { return }
             // Moving to another screen: every change restarts the wait for things to settle.
             if self.relocateWork != nil {
                 self.relocatePanel()
@@ -74,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.panel.alphaValue = 0
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 self.followAnchor(animated: false)
-                guard self.panel.isVisible else { return }
+                guard self.panel.isShown else { return }
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0.2
                     context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -94,9 +109,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .sink { [weak self] active in self?.statusItem.button?.image = StatusIcon.image(keepAwake: active) }
             .store(in: &cancellables)
+        keepAwake.onReachedLimit = { [weak self] in self?.showLimitNotice() }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
+                                                          object: nil, queue: .main) { [weak self] _ in
+            self?.refreshStatusIcon()
+        }
         SettingsWindow.shared.keepAwake = keepAwake
         NSApp.mainMenu = makeMainMenu()
 
+        if ProcessInfo.processInfo.environment["SCREENCONTROL_LIMIT_NOTICE"] == "1" {
+            // Development aid: show the "turned off after 24 hours" notice shortly after launch.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                self.showLimitNotice()
+                if let path = ProcessInfo.processInfo.environment["SCREENCONTROL_CAPTURE"] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        if let number = self.limitNotice.windowNumber { SelfTest.capture(windowNumber: number, to: path) }
+                    }
+                }
+            }
+        }
         if ProcessInfo.processInfo.environment["SCREENCONTROL_OPEN_PANEL"] == "1" {
             // Development aid: open the panel at launch (for screenshots). Login item untouched.
             if ProcessInfo.processInfo.environment["SCREENCONTROL_APPEARANCE"] == "dark" {
@@ -140,22 +171,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Status item
 
+    /// Accessibility clicks (the button's action).
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        let event = NSApp.currentEvent
+        handleStatusClick(NSApp.currentEvent)
+    }
+
+    private func handleStatusClick(_ event: NSEvent?) {
         if event?.type == .rightMouseDown || event?.modifierFlags.contains(.control) == true {
             closePanel()
             showContextMenu(trigger: event)
-        } else if panel.isVisible {
+        } else if panel.isShown {
             closePanel()
         } else {
-            openPanel()
+            openPanel(clicked: event?.window)
         }
     }
 
-    private func openPanel() {
+    private func openPanel(clicked: NSWindow? = nil) {
         guard let button = statusItem.button else { return }
-        let clicked = NSApp.currentEvent?.window
         guard let statusWindow = (clicked?.className.contains("StatusBar") == true ? clicked : nil) ?? button.window else { return }
+        limitNotice.close()
         toggles.refresh()
         displays.setPanelVisible(true)
         keyboard.setPanelVisible(true)
@@ -164,6 +199,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         anchorMode = statusWindow.screen.map { (size: $0.frame.size, scale: $0.backingScaleFactor) }
         panel.show(below: statusWindow)
         button.highlight(true)
+        // The panel opens on mouse down; the button keeps tracking the click and takes its
+        // highlight away on mouse up. Set it again once that tracking is over (the default run
+        // loop mode runs only after it), so the icon stays highlighted while the panel is open,
+        // as with the system's menu bar items.
+        RunLoop.main.perform(inModes: [.default]) { [weak self] in
+            guard let self, self.panel.isShown else { return }
+            self.statusItem.button?.highlight(true)
+        }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
             self?.closePanel()
         }
@@ -172,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keeps the panel under its status item, at the right height; closes it if that menu bar
     /// has gone (its display was turned off).
     private func followAnchor(animated: Bool) {
-        guard panel.isVisible else { return }
+        guard panel.isShown else { return }
         guard let window = statusWindows().first(where: { Self.displayID(of: $0) == anchorDisplay }) else {
             relocatePanel()
             return
@@ -198,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func finishRelocation() {
         relocateWork = nil
-        guard panel.isVisible else { return }
+        guard panel.isShown else { return }
         let windows = statusWindows()
         guard let window = windows.first(where: { $0.screen == NSScreen.screens.first }) ?? windows.first else {
             closePanel()
@@ -225,11 +268,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func closePanel() {
-        guard panel.isVisible else { return }
+        guard panel.isShown else { return }
         relocateWork?.cancel()
         relocateWork = nil
-        panel.orderOut(nil)
-        panel.alphaValue = 1
+        panel.fadeOut()
         statusItem.button?.highlight(false)
         displays.setPanelVisible(false)
         keyboard.setPanelVisible(false)
@@ -238,6 +280,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(outsideClickMonitor)
             self.outsideClickMonitor = nil
         }
+    }
+
+    /// The menu bar is rebuilt after a resolution or display change (and on wake), sometimes
+    /// before it has its new height: lay the icon out again once it has settled.
+    private func refreshStatusIcon() {
+        for delay in [0.3, 1.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, let button = self.statusItem.button else { return }
+                self.statusItem.length = NSStatusItem.variableLength
+                button.image = StatusIcon.image(keepAwake: self.keepAwake.isActive)
+                button.needsLayout = true
+                button.needsDisplay = true
+            }
+        }
+    }
+
+    // MARK: Keep Awake limit
+
+    private let limitNotice = LimitNotice()
+
+    /// Keep Awake was turned off after 24 hours: a small popover under the icon says so.
+    private func showLimitNotice() {
+        guard let button = statusItem.button, button.window != nil else { return }
+        if panel.isShown { closePanel() }
+        limitNotice.show(below: button)
     }
 
     private func showContextMenu(trigger: NSEvent?) {
@@ -269,7 +336,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let time = end.formatted(date: Calendar.current.isDateInToday(end) ? .omitted : .abbreviated, time: .shortened)
                 status = "Keeping awake until \(time)"
             } else {
-                status = "Keeping awake until turned off"
+                // On until turned off, but never longer than 24 hours.
+                let limit = keepAwake.limitDate ?? Date().addingTimeInterval(KeepAwake.maximumDuration)
+                let time = limit.formatted(date: Calendar.current.isDateInToday(limit) ? .omitted : .abbreviated, time: .shortened)
+                status = "Keeping awake until turned off (at most until \(time))"
             }
             let info = NSMenuItem(title: status, action: nil, keyEquivalent: "")
             info.isEnabled = false

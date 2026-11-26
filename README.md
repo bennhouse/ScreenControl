@@ -74,7 +74,7 @@ Stops the Mac and its display from going to sleep while you're not using it, lik
 - **Turn on:** right-click the menu bar icon and choose **Turn On Keep Awake** (until you turn it off), or **Turn On For…** › 15 minutes, 30 minutes, 1, 2, 4 or 8 hours, or Indefinitely.
 - **Shortcut:** <kbd>⇧</kbd><kbd>⌘</kbd><kbd>L</kbd> turns it on (until turned off) and off, from anywhere. Change it in **Settings…** in the same menu. ScreenControl registers it exclusively: while it runs, ⇧⌘L always goes to Keep Awake, ahead of ⇧⌘L in any app and of other apps' global shortcuts on the same keys, which stop working.
 - **At a glance:** while it is on, a small coffee cup appears on the display in the menu bar icon, and the menu shows until when.
-- It ends at the chosen time, when you turn it off, or when ScreenControl quits. Closing the lid of a MacBook still puts it to sleep.
+- It ends at the chosen time, when you turn it off, or when ScreenControl quits. However it was turned on (⇧⌘L, Indefinitely), it turns itself off after 24 hours at most, and a small popover under the menu bar icon says so. Closing the lid of a MacBook still puts it to sleep.
 
 ### Control Center toggles
 

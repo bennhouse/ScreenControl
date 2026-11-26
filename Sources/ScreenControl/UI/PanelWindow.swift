@@ -7,11 +7,22 @@ final class PanelWindow: NSPanel {
     static let cornerRadius: CGFloat = 6
     /// Shared with the SwiftUI layout animation so the window and its content move together.
     static let resizeDuration: TimeInterval = 0.3
-    /// Space between the bottom of the menu bar and the top of the panel.
-    static let menuBarGap: CGFloat = 5
+    /// Space between the bottom of the status item window and the top of the panel: 2 pt, as
+    /// macOS places its own menu bar extra windows (measured on a `MenuBarExtra(.window)`:
+    /// status window bottom at 876, its window top at 874), 1 pt under the menu bar itself.
+    static let menuBarGap: CGFloat = 2
+    /// Closing fade: linear, twice as long as the system's (about 0.11 s, measured from the
+    /// window server).
+    static let fadeOutDuration: TimeInterval = 0.22
 
     var onClose: (() -> Void)?
     private let hosting: NSHostingView<AnyView>
+    /// Set while the closing fade runs; the panel is still on screen but already closed.
+    private(set) var isFadingOut = false
+    private var fadeGeneration = 0
+
+    /// Open, and not on its way out.
+    var isShown: Bool { isVisible && !isFadingOut }
 
     init<Content: View>(content: Content) {
         hosting = NSHostingView(rootView: AnyView(content))
@@ -69,9 +80,38 @@ final class PanelWindow: NSPanel {
     /// `statusWindow` is the status item window that was clicked: with several displays there is
     /// one per menu bar.
     func show(below statusWindow: NSWindow) {
+        // Reopened during the closing fade: stop it where it is.
+        fadeGeneration += 1
+        isFadingOut = false
+        ignoresMouseEvents = false
+        animationBehavior = .utilityWindow
         setFrame(frame(below: statusWindow), display: true)
         alphaValue = 1
         makeKeyAndOrderFront(nil)
+    }
+
+    /// Closes with its own fade instead of the system's: macOS fades a snapshot of the window,
+    /// in which the live backdrop material can't be captured and shows as a white flash.
+    /// Fading the window itself keeps the material live to the end.
+    func fadeOut() {
+        guard isVisible, !isFadingOut else { return }
+        isFadingOut = true
+        ignoresMouseEvents = true
+        fadeGeneration += 1
+        let generation = fadeGeneration
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fadeOutDuration
+            context.timingFunction = CAMediaTimingFunction(name: .linear)
+            animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self, generation == self.fadeGeneration else { return }
+            // No system animation on the way out: the window is already transparent.
+            self.animationBehavior = .none
+            self.orderOut(nil)
+            self.isFadingOut = false
+            self.ignoresMouseEvents = false
+            self.alphaValue = 1
+        }
     }
 
     /// Puts the panel back under its status item after macOS has rearranged the displays

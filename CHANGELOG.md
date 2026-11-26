@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- New icon, redrawn with the rest of the suite from one shared design (same glass parts, light, shadows and safe area on every icon).
+- The panel opens 2 pt under its status item, as macOS places its own menu bar windows (it was 5 pt).
+- Closing the panel: a linear 0.22 s fade of the panel itself (twice the system's), with no white flash. The system faded a snapshot of the window, in which the translucent material showed up white.
+- Keep Awake turns itself off after 24 hours at most, however it was turned on (⇧⌘L, "Indefinitely"), counted from when it was turned on; choosing another duration meanwhile doesn't reset it. The limit is checked again on wake. A small popover under the menu bar icon says so, fading in and out. The menu shows the latest end time.
+- External displays whose monitor never answers a DDC brightness read (or reports brightness as unsupported) get a disabled slider, and nothing is written to them. "Reduce brightness" still works on them.
+- Likely fix for the menu bar icon sometimes cut off after a resolution change (not reproduced): the item is as wide as its image (variable length; a square item measured 22.5 pt for a 22 pt icon in a test app) and is laid out again after display changes and on wake.
+- The menu bar icon stays highlighted while the panel is open, as system menu bar items do (it only flashed, then flickered: clicks on the icon are now handled before the button tracks them, so nothing takes the highlight away).
+- The "Keep Awake turned off" popover's arrow sits on the icon's centre (it was 1¼ pt to the left).
+- The display in the menu bar icon no longer moves ½ pt left when the coffee cup appears.
+
 ## 1.4
 
 - New icon: the suite's colour icons, ScreenControl in orange.

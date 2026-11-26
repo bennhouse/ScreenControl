@@ -30,6 +30,25 @@ enum KeepAwakeSelfTest {
         check("timed: ends by itself", !keepAwake.isActive)
         check("timed: assertion released", assertions() == before)
 
+        // The 24-hour limit (shortened to 2 s here): an indefinite session, and one switched to
+        // another duration meanwhile, both end at the limit, which is not reset.
+        let savedLimit = KeepAwake.maximumDuration
+        KeepAwake.maximumDuration = 2
+        var limitCalls = 0
+        keepAwake.onReachedLimit = { limitCalls += 1 }
+        keepAwake.start(minutes: nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        keepAwake.start(minutes: 480)
+        check("limit: a longer duration chosen while on is cut to the limit", keepAwake.endDate == nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(1.6))
+        check("limit: ends 2 s after turning on, not reset", !keepAwake.isActive && limitCalls == 1)
+        check("limit: assertion released", assertions() == before)
+        keepAwake.start(seconds: 1)
+        RunLoop.main.run(until: Date().addingTimeInterval(1.6))
+        check("limit: a timed session ending first is not reported as the limit", !keepAwake.isActive && limitCalls == 1)
+        keepAwake.onReachedLimit = nil
+        KeepAwake.maximumDuration = savedLimit
+
         if CommandLine.arguments.count > 2 {
             let dir = URL(fileURLWithPath: CommandLine.arguments[2])
             for on in [false, true] {
